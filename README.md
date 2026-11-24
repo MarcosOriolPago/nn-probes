@@ -36,6 +36,24 @@ class Encoder(nn.Module):
 
 `probes.run` finds decorated methods automatically, so you can mix both styles.
 
+## Live viewer
+
+```python
+probes = nnp.Probes("runs/exp1", serve=True)   # prints http://127.0.0.1:8050
+```
+
+Open the address to watch the run while it trains: each metric over epochs, every probe side by
+side, and each figure with a slider to step or play through the epochs. Hover for values, and click
+a class in a scatter's legend to highlight it. The viewer runs in a background thread and stops when
+the script ends. To open a run again later:
+
+```bash
+nnprobes view runs/exp1
+```
+
+It only listens on localhost. On a remote machine, forward the port with
+`ssh -L 8050:localhost:8050 <host>`. It needs no internet and no extra dependencies.
+
 ## What you get
 
 ```
@@ -43,11 +61,13 @@ runs/exp1/
 ├── probes.csv                      step, probe, metric, value
 └── encoder/
     ├── curves.png                  each metric over epochs ("test" as a dashed line)
-    ├── pca/epoch000.png, epoch005.png, ..., test.png
+    ├── pca/epoch005.json, epoch005.png, ..., test.json, test.png
     └── activations/epoch005.npz    raw values + labels, with SaveActivations()
 ```
 
-`run` also returns the numbers, `{probe: {metric: value}}`.
+Each figure's `.json` holds the data behind it, so you can redraw or restyle it later with
+`nnp.draw(json.load(open(path)))`, which returns a matplotlib figure. `run` also returns the
+numbers, `{probe: {metric: value}}`.
 
 ## Metrics
 
@@ -75,8 +95,9 @@ class Sparsity(nnp.ScalarMetric):
 ```
 
 `data.values` holds what the layer returned for each sample, and `data.labels` holds the labels when the
-batches carry them. For a plot, subclass `nnp.FigureMetric` and return a matplotlib
-`Figure` from `render(data, title)`.
+batches carry them. For a plot, subclass `nnp.FigureMetric` and return the plot's data from
+`compute(data)`, for example `{"kind": "line", "x": [...], "y": [...]}`. The kinds are
+`scatter`, `line`, `bars`, `heatmap` and `message`. The PNG and the viewer both draw from that data.
 
 ## Notes
 

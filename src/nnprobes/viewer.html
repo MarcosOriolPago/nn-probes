@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nn-probes viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #ebebee; --panel: #ffffff; --raised: #e9e9ec; --line: #d2d2d8; --text: #09090b; --muted: #4f4f58;
+  --accent: #3b5fd9; --accent-soft: #dbe3fb; --danger: #c81e1e; --grid: #e4e4e8;
+  --s1: #2a78d6; --s2: #d4602a; --s3: #1f9a6e; --s4: #a24bc9; --s5: #b88a0b; --s6: #d63a75; --s7: #6250d6; --s8: #e34948;
+  --ramp: #f4f6fd, #cde2fb, #86b6ef, #3987e5, #256abf, #184f95, #0d366b;
+  --sans: "Geist", "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "JetBrains Mono Variable", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0e0e10; --panel: #16161a; --raised: #1f1f25; --line: #2c2c33; --text: #ececef; --muted: #8f8f99;
+    --accent: #7f9cf0; --accent-soft: #1f2b4d; --danger: #f87171; --grid: #222228;
+    --s1: #5fa2f0; --s2: #f0975f; --s3: #3fc79a; --s4: #c58be6; --s5: #e2bb45; --s6: #f07aa5; --s7: #9085e9; --s8: #e66767;
+    --ramp: #1a1d2b, #142f5c, #1c5cab, #3987e5, #6da7ec, #9ec5f4, #e6f0fd;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e0e10; --panel: #16161a; --raised: #1f1f25; --line: #2c2c33; --text: #ececef; --muted: #8f8f99;
+  --accent: #7f9cf0; --accent-soft: #1f2b4d; --danger: #f87171; --grid: #222228;
+  --s1: #5fa2f0; --s2: #f0975f; --s3: #3fc79a; --s4: #c58be6; --s5: #e2bb45; --s6: #f07aa5; --s7: #9085e9; --s8: #e66767;
+  --ramp: #1a1d2b, #142f5c, #1c5cab, #3987e5, #6da7ec, #9ec5f4, #e6f0fd;
+}
+
+* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted) 35%, transparent) transparent; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: grid; grid-template-rows: 40px 1fr 26px; background: var(--bg); color: var(--text);
+  font: 13px/1.4 var(--sans); -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+
+header.top {
+  display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--panel);
+  border-bottom: 1px solid var(--line); min-width: 0;
+}
+.brand { display: flex; align-items: center; gap: 7px; font-weight: 600; white-space: nowrap; }
+.brand svg { color: var(--accent); }
+.path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
+.spacer { flex: 1; }
+.icon-btn { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; color: var(--muted); flex: none; }
+.icon-btn:hover { background: var(--raised); color: var(--text); }
+.icon-btn:disabled { opacity: .4; cursor: default; background: none; }
+
+.layout { display: grid; grid-template-columns: 220px 1fr; min-height: 0; }
+nav.side { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 8px; }
+.side h4 { margin: 10px 6px 4px; font-size: 11px; font-weight: 500; color: var(--muted); }
+.side button {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border-radius: 6px; text-align: left;
+  color: var(--muted); min-width: 0;
+}
+.side button span.name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side button:hover { background: var(--raised); color: var(--text); }
+.side button[aria-current="true"] { background: var(--accent-soft); color: var(--text); }
+.swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.count { font-size: 11px; font-family: var(--mono); }
+
+main { overflow-y: auto; padding: 16px; min-width: 0; }
+.title { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.title h1 { font-size: 16px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+section.group { margin-bottom: 20px; }
+section.group > h2 { font-size: 12px; font-weight: 500; color: var(--muted); margin: 0 0 8px; }
+.grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.grid.wide { grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+}
+.panel header { display: flex; align-items: baseline; gap: 8px; font-size: 12px; min-width: 0; }
+.panel header h3 { margin: 0; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.panel header .note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
+.panel header .value { margin-left: auto; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.plot { position: relative; width: 100%; }
+.plot canvas { position: absolute; inset: 0; }
+.tip {
+  position: absolute; display: none; pointer-events: none; z-index: 5; padding: 6px 8px; border-radius: 6px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: 0 4px 14px rgb(0 0 0 / .12);
+  font-size: 11px; white-space: nowrap;
+}
+.tip b { font-weight: 500; }
+.tip .row { display: flex; align-items: center; gap: 6px; }
+.tip .row .v { margin-left: auto; padding-left: 12px; font-family: var(--mono); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: var(--muted); }
+.legend button { display: flex; align-items: center; gap: 5px; padding: 1px 0; color: var(--muted); }
+.legend button:hover { color: var(--text); }
+.legend button.dim { opacity: .4; }
+.legend .line { width: 12px; border-top: 2px solid; }
+
+.controls { display: flex; align-items: center; gap: 4px; }
+.controls input[type=range] { flex: 1; min-width: 60px; accent-color: var(--accent); }
+.controls .step { font-family: var(--mono); font-size: 11px; min-width: 88px; text-align: right; color: var(--muted); }
+.pill { font-family: var(--mono); font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--raised); color: var(--muted); }
+
+table.latest { border-collapse: collapse; width: 100%; font-size: 12px; }
+.table-wrap { overflow-x: auto; }
+table.latest th, table.latest td { padding: 5px 10px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.latest th { font-weight: 500; color: var(--muted); font-size: 11px; }
+table.latest th:first-child, table.latest td:first-child { text-align: left; }
+table.latest td { font-family: var(--mono); }
+table.latest td:first-child { font-family: var(--sans); }
+table.latest tbody tr { cursor: pointer; }
+table.latest tbody tr:hover { background: var(--raised); }
+
+.empty { display: grid; place-items: center; height: 100%; text-align: center; color: var(--muted); }
+.empty code { font-family: var(--mono); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; display: inline-block; margin-top: 10px; color: var(--text); }
+
+footer.status {
+  display: flex; align-items: center; gap: 12px; padding: 0 12px; background: var(--panel); border-top: 1px solid var(--line);
+  font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); display: inline-block; margin-right: 6px; }
+.dot.live { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.dot.down { background: var(--danger); }
+
+@media (max-width: 720px) {
+  .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  nav.side { display: flex; gap: 4px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 6px 16px; }
+  .side h4 { display: none; }
+  .side button { width: auto; flex: none; }
+  main { padding: 12px 16px; }
+  .grid, .grid.wide { grid-template-columns: 1fr; }
+  .path { display: none; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 12h4l6-6M11 12l6 6"/></svg>
+    nn-probes
+  </div>
+  <span class="path mono" id="path"></span>
+  <span class="spacer"></span>
+  <button class="icon-btn" id="theme" title="Switch theme"></button>
+</header>
+<div class="layout">
+  <nav class="side" id="side"></nav>
+  <main id="main"></main>
+</div>
+<footer class="status">
+  <span><span class="dot" id="dot"></span><span id="state">connecting…</span></span>
+  <span id="summary"></span>
+</footer>
+
+<script>
+const ICONS = {
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>',
+  play: '<path d="M7 4l13 8-13 8z"/>',
+  pause: '<path d="M8 4v16M16 4v16"/>',
+  left: '<path d="M15 18l-6-6 6-6"/>',
+  right: '<path d="M9 18l6-6-6-6"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+};
+const icon = (name, size = 14) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+let tokens = {};
+const token = (name) => (tokens[name] ??= getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim());
+const seriesColor = (i) => token(`s${(i % 8) + 1}`);
+
+function applyTheme(theme) {
+  if (theme) document.documentElement.dataset.theme = theme; else delete document.documentElement.dataset.theme;
+  tokens = {};
+  const dark = theme ? theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  document.getElementById('theme').innerHTML = icon(dark ? 'sun' : 'moon', 15);
+  plots.forEach((p) => p.render());
+}
+document.getElementById('theme').onclick = () => {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === 'dark'
+    : matchMedia('(prefers-color-scheme: dark)').matches;
+  const next = dark ? 'light' : 'dark';
+  store.set('nnprobes.theme', next);
+  applyTheme(next);
+};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(store.get('nnprobes.theme')));
+
+function fmt(v) {
+  if (v == null || !isFinite(v)) return '–';
+  const a = Math.abs(v);
+  if (a !== 0 && (a >= 1e5 || a < 1e-3)) return v.toExponential(2).replace(/\.?0+e/, 'e');
+  return String(+v.toPrecision(4));
+}
+function niceStep(raw) {
+  const p = 10 ** Math.floor(Math.log10(raw)), f = raw / p;
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p;
+}
+function linearTicks(lo, hi, n) {
+  const step = niceStep((hi - lo) / Math.max(1, n)), out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) out.push(+v.toPrecision(12));
+  return out;
+}
+
+const plots = new Set();
+const resize = new ResizeObserver((entries) => entries.forEach((e) => e.target._plot?.render()));
+
+function makePlot(host, height) {
+  const wrap = el('div', 'plot');
+  wrap.style.height = `${height}px`;
+  const canvas = el('canvas'), tip = el('div', 'tip');
+  wrap.append(canvas, tip);
+  host.append(wrap);
+  const plot = { wrap, draw: null, mouse: null };
+  plot.render = () => {
+    if (!wrap.isConnected) return;
+    const w = wrap.clientWidth, h = wrap.clientHeight, dpr = devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    canvas.style.width = `${w}px`; canvas.style.height = `${h}px`;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const html = plot.draw ? plot.draw(ctx, w, h, plot.mouse) : null;
+    if (html && plot.mouse) {
+      tip.innerHTML = html; tip.style.display = 'block';
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      let x = plot.mouse.x + 14, y = plot.mouse.y + 14;
+      if (x + tw > w) x = plot.mouse.x - tw - 14;
+      if (y + th > h) y = Math.max(0, plot.mouse.y - th - 10);
+      tip.style.left = `${Math.max(0, x)}px`; tip.style.top = `${y}px`;
+    } else tip.style.display = 'none';
+  };
+  canvas.addEventListener('mousemove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    plot.mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+    plot.render();
+  });
+  canvas.addEventListener('mouseleave', () => { plot.mouse = null; plot.render(); });
+  wrap._plot = plot;
+  plots.add(plot);
+  resize.observe(wrap);
+  return plot;
+}
+
+function frame(ctx, w, h, o) {
+  const showTicks = o.ticks !== false;
+  const box = { l: showTicks ? (o.ylabel ? 62 : 48) : 10, r: w - (o.right ?? 12), t: 10, b: h - (o.xlabel ? 36 : 22) };
+  let [x0, x1] = o.x, [y0, y1] = o.y;
+  const ly = (v) => (o.logy ? Math.log10(Math.max(v, 1e-12)) : v);
+  y0 = ly(y0); y1 = ly(y1);
+  if (x0 === x1) { x0 -= 1; x1 += 1; }
+  if (y0 === y1) { const d = Math.abs(y0) * 0.1 || 0.5; y0 -= d; y1 += d; }
+  const py = (y1 - y0) * 0.08; y0 -= py; y1 += py;
+  if (o.padX) { const px = (x1 - x0) * o.padX; x0 -= px; x1 += px; }
+  const sx = (v) => box.l + ((v - x0) / (x1 - x0)) * (box.r - box.l);
+  const sy = (v) => box.b - ((ly(v) - y0) / (y1 - y0)) * (box.b - box.t);
+
+  ctx.font = `10px ${token('mono')}`;
+  ctx.lineWidth = 1;
+  if (showTicks) {
+    let yt;
+    if (o.logy && y1 - y0 >= 1) {
+      yt = []; for (let e = Math.ceil(y0); e <= Math.floor(y1); e++) yt.push(10 ** e);
+    } else {
+      yt = linearTicks(y0, y1, Math.max(2, Math.floor((box.b - box.t) / 36))).map((t) => (o.logy ? 10 ** t : t));
+    }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for (const t of yt) {
+      const y = Math.round(sy(t)) + 0.5;
+      ctx.strokeStyle = token('grid'); ctx.beginPath(); ctx.moveTo(box.l, y); ctx.lineTo(box.r, y); ctx.stroke();
+      ctx.fillStyle = token('muted'); ctx.fillText(fmt(t), box.l - 6, y);
+    }
+    let xt = linearTicks(x0, x1, Math.max(2, Math.floor((box.r - box.l) / 70)));
+    if (o.integerX) xt = xt.filter((t) => Number.isInteger(t));
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const t of xt) ctx.fillText(fmt(t), sx(t), box.b + 6);
+    ctx.strokeStyle = token('line');
+    ctx.beginPath(); ctx.moveTo(box.l, Math.round(box.b) + 0.5); ctx.lineTo(box.r, Math.round(box.b) + 0.5); ctx.stroke();
+  }
+  ctx.font = `11px ${token('sans')}`; ctx.fillStyle = token('muted');
+  if (o.xlabel) { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(o.xlabel, (box.l + box.r) / 2, h - 2); }
+  if (o.ylabel && showTicks) {
+    ctx.save(); ctx.translate(11, (box.t + box.b) / 2); ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(o.ylabel, 0, 0); ctx.restore();
+  }
+  return { box, sx, sy, inside: (m) => m && m.x >= box.l - 8 && m.x <= box.r + 8 && m.y >= box.t && m.y <= box.b };
+}
+
+function drawMessage(ctx, w, h, text) {
+  ctx.font = `12px ${token('sans')}`; ctx.fillStyle = token('muted');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, w / 2, h / 2);
+}
+
+const swatch = (color, line) =>
+  line ? `<span class="line" style="border-color:${color}"></span>` : `<span class="swatch" style="background:${color}"></span>`;
+
+function lineChart(spec) {
+  return (ctx, w, h, m) => {
+    const series = spec.series.filter((s) => !s.hidden);
+    const xs = [...new Set(series.flatMap((s) => s.x))].sort((a, b) => a - b);
+    const ys = series.flatMap((s) => s.y.filter((v) => v != null && (!spec.logy || v > 0)));
+    const marks = spec.marks || [];
+    ys.push(...marks.map((k) => k.value));
+    if (!ys.length) { drawMessage(ctx, w, h, 'no values yet'); return null; }
+    const f = frame(ctx, w, h, {
+      x: xs.length ? [xs[0], xs.at(-1)] : [0, 1], y: [Math.min(...ys), Math.max(...ys)],
+      logy: spec.logy, xlabel: spec.xlabel, ylabel: spec.ylabel, integerX: spec.integerX, padX: 0.03,
+    });
+    for (const mark of marks) {
+      const y = f.sy(mark.value);
+      ctx.strokeStyle = token('muted'); ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(f.box.l, y); ctx.lineTo(f.box.r, y); ctx.stroke(); ctx.setLineDash([]);
+      const below = y - 14 < f.box.t;
+      ctx.font = `10px ${token('mono')}`; ctx.fillStyle = token('muted'); ctx.textAlign = 'right';
+      ctx.textBaseline = below ? 'top' : 'bottom';
+      ctx.fillText(`${mark.name} ${fmt(mark.value)}`, f.box.r - 2, below ? y + 3 : y - 2);
+    }
+    let hover = null;
+    if (f.inside(m) && xs.length) hover = xs.reduce((a, b) => (Math.abs(f.sx(b) - m.x) < Math.abs(f.sx(a) - m.x) ? b : a));
+    if (hover != null) {
+      const x = Math.round(f.sx(hover)) + 0.5;
+      ctx.strokeStyle = token('line'); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, f.box.t); ctx.lineTo(x, f.box.b); ctx.stroke();
+    }
+    for (const s of series) {
+      ctx.strokeStyle = s.color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.setLineDash(s.dash ? [5, 4] : []);
+      ctx.beginPath();
+      let pen = false;
+      s.x.forEach((x, i) => {
+        const v = s.y[i];
+        if (v == null || (spec.logy && v <= 0)) { pen = false; return; }
+        pen ? ctx.lineTo(f.sx(x), f.sy(v)) : ctx.moveTo(f.sx(x), f.sy(v));
+        pen = true;
+      });
+      ctx.stroke(); ctx.setLineDash([]);
+      const few = s.x.length <= 60;
+      s.x.forEach((x, i) => {
+        const v = s.y[i];
+        if (v == null || (spec.logy && v <= 0)) return;
+        const r = x === hover ? 4 : few || s.x.length === 1 ? 2.5 : 0;
+        if (!r) return;
+        ctx.beginPath(); ctx.arc(f.sx(x), f.sy(v), r, 0, 2 * Math.PI);
+        ctx.fillStyle = s.color; ctx.fill();
+        ctx.strokeStyle = token('panel'); ctx.lineWidth = 1.5; ctx.stroke();
+      });
+    }
+    if (hover == null) return null;
+    const rows = series
+      .map((s) => [s, s.y[s.x.indexOf(hover)]])
+      .filter(([, v]) => v !== undefined)
+      .map(([s, v]) => `<div class="row">${swatch(s.color)}<span>${esc(s.name)}</span><span class="v">${fmt(v)}</span></div>`)
+      .join('');
+    return `<b>${esc(spec.xlabel || 'x')} ${fmt(hover)}</b>${rows}`;
+  };
+}
+
+function scatterChart(spec, focus) {
+  return (ctx, w, h, m) => {
+    const groups = spec.groups.map((g, i) => ({ ...g, color: seriesColor(i) }));
+    const xs = groups.flatMap((g) => g.x).filter((v) => v != null), ys = groups.flatMap((g) => g.y).filter((v) => v != null);
+    if (!xs.length) { drawMessage(ctx, w, h, 'no points'); return null; }
+    const f = frame(ctx, w, h, {
+      x: [Math.min(...xs), Math.max(...xs)], y: [Math.min(...ys), Math.max(...ys)], padX: 0.04,
+      ticks: !!spec.xlabel, xlabel: spec.xlabel, ylabel: spec.ylabel,
+    });
+    let best = null, bestD = 64;
+    const order = groups.map((g, i) => i).sort((a, b) => focus.has(groups[a].name) - focus.has(groups[b].name));
+    for (const i of order) {
+      const g = groups[i];
+      const faded = focus.size && !focus.has(g.name);
+      ctx.fillStyle = g.color; ctx.globalAlpha = faded ? 0.08 : 0.75;
+      g.x.forEach((x, k) => {
+        const y = g.y[k];
+        if (x == null || y == null) return;
+        const px = f.sx(x), py = f.sy(y);
+        ctx.beginPath(); ctx.arc(px, py, 2.4, 0, 2 * Math.PI); ctx.fill();
+        if (m && !faded) {
+          const d = (px - m.x) ** 2 + (py - m.y) ** 2;
+          if (d < bestD) { bestD = d; best = { g, px, py, x, y }; }
+        }
+      });
+    }
+    ctx.globalAlpha = 1;
+    if (!best) return null;
+    ctx.beginPath(); ctx.arc(best.px, best.py, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = best.g.color; ctx.fill(); ctx.strokeStyle = token('panel'); ctx.lineWidth = 2; ctx.stroke();
+    const coords = spec.xlabel ? `<div class="muted mono">${fmt(best.x)}, ${fmt(best.y)}</div>` : '';
+    return `<div class="row">${swatch(best.g.color)}<b>${esc(best.g.name)}</b></div>${coords}`;
+  };
+}
+
+function barsChart(spec) {
+  return (ctx, w, h, m) => {
+    const { edges, counts } = spec;
+    const positive = counts.filter((c) => c > 0);
+    if (!positive.length) { drawMessage(ctx, w, h, 'no values'); return null; }
+    const lo = spec.logy ? Math.min(...positive) * 0.7 : 0;
+    const f = frame(ctx, w, h, { x: [edges[0], edges.at(-1)], y: [lo, Math.max(...counts)], logy: spec.logy, xlabel: spec.xlabel, ylabel: spec.ylabel || 'count' });
+    let hover = -1;
+    if (f.inside(m)) hover = counts.findIndex((_, i) => m.x >= f.sx(edges[i]) && m.x < f.sx(edges[i + 1]));
+    counts.forEach((c, i) => {
+      if (c <= 0) return;
+      const x0 = f.sx(edges[i]), x1 = f.sx(edges[i + 1]), y = f.sy(c);
+      const gap = x1 - x0 > 4 ? 1 : 0;
+      ctx.fillStyle = token('s1'); ctx.globalAlpha = hover === -1 || hover === i ? 1 : 0.55;
+      ctx.fillRect(x0 + gap / 2, y, Math.max(1, x1 - x0 - gap), f.box.b - y);
+    });
+    ctx.globalAlpha = 1;
+    if (hover < 0) return null;
+    return `<b class="mono">${fmt(edges[hover])} … ${fmt(edges[hover + 1])}</b><div class="row"><span>count</span><span class="v">${counts[hover]}</span></div>`;
+  };
+}
+
+function rampColor(t) {
+  const stops = token('ramp').split(',').map((s) => s.trim()).map((hx) => [1, 3, 5].map((k) => parseInt(hx.slice(k, k + 2), 16)));
+  const p = Math.min(1, Math.max(0, t)) * (stops.length - 1), i = Math.min(stops.length - 2, Math.floor(p)), u = p - i;
+  const c = stops[i].map((v, k) => Math.round(v + (stops[i + 1][k] - v) * u));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+
+function heatmapChart(spec) {
+  return (ctx, w, h, m) => {
+    const z = spec.z, rows = spec.rows, cols = z[0]?.length || 0;
+    const values = z.flat().filter((v) => v != null);
+    if (!values.length) { drawMessage(ctx, w, h, 'no values'); return null; }
+    const lo = Math.min(...values), hi = Math.max(...values);
+    ctx.font = `11px ${token('sans')}`;
+    const labelW = Math.min(140, Math.max(...rows.map((r) => ctx.measureText(r).width)) + 10);
+    const box = { l: labelW, r: w - 66, t: 6, b: h - (spec.xlabel ? 36 : 22) };
+    const cw = (box.r - box.l) / cols, ch = (box.b - box.t) / rows.length;
+    z.forEach((row, r) => row.forEach((v, c) => {
+      ctx.fillStyle = v == null ? token('raised') : rampColor((v - lo) / (hi - lo || 1));
+      ctx.fillRect(box.l + c * cw, box.t + r * ch, Math.ceil(cw), Math.ceil(ch));
+    }));
+    ctx.fillStyle = token('muted'); ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    if (ch >= 9) rows.forEach((name, r) => ctx.fillText(name, box.l - 6, box.t + (r + 0.5) * ch));
+    ctx.font = `10px ${token('mono')}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (const t of linearTicks(0, cols - 1, Math.max(2, Math.floor((box.r - box.l) / 60)))) {
+      if (Number.isInteger(t)) ctx.fillText(t, box.l + (t + 0.5) * cw, box.b + 6);
+    }
+    if (spec.xlabel) { ctx.font = `11px ${token('sans')}`; ctx.textBaseline = 'bottom'; ctx.fillText(spec.xlabel, (box.l + box.r) / 2, h - 2); }
+    const bx = w - 54, steps = 48;
+    for (let k = 0; k < steps; k++) {
+      ctx.fillStyle = rampColor(1 - k / (steps - 1));
+      ctx.fillRect(bx, box.t + (k * (box.b - box.t)) / steps, 10, Math.ceil((box.b - box.t) / steps));
+    }
+    ctx.font = `10px ${token('mono')}`; ctx.fillStyle = token('muted'); ctx.textAlign = 'left';
+    ctx.textBaseline = 'top'; ctx.fillText(fmt(hi), bx + 13, box.t);
+    ctx.textBaseline = 'bottom'; ctx.fillText(fmt(lo), bx + 13, box.b);
+    if (!m || m.x < box.l || m.x >= box.r || m.y < box.t || m.y >= box.b) return null;
+    const c = Math.floor((m.x - box.l) / cw), r = Math.floor((m.y - box.t) / ch);
+    ctx.strokeStyle = token('text'); ctx.lineWidth = 1.5;
+    ctx.strokeRect(box.l + c * cw, box.t + r * ch, cw, ch);
+    return `<b>${esc(rows[r])}</b><div class="row"><span>step ${c}</span><span class="v">${fmt(z[r][c])}</span></div>`;
+  };
+}
+
+function figureChart(spec, focus) {
+  if (spec.kind === 'scatter') return scatterChart(spec, focus);
+  if (spec.kind === 'bars') return barsChart(spec);
+  if (spec.kind === 'heatmap') return heatmapChart(spec);
+  if (spec.kind === 'line') {
+    return lineChart({ series: [{ name: spec.ylabel || 'value', x: spec.x, y: spec.y, color: token('s1') }], logy: spec.logy, xlabel: spec.xlabel, ylabel: spec.ylabel });
+  }
+  return (ctx, w, h) => { drawMessage(ctx, w, h, spec.text || `cannot draw "${spec.kind}"`); return null; };
+}
+
+const state = {
+  run: null, text: '', connected: null, changed: null,
+  view: decodeURIComponent(location.hash.slice(1)) || null,
+  figures: {}, cache: new Map(),
+};
+
+const probeNames = () => {
+  if (!state.run) return [];
+  return [...new Set([...Object.keys(state.run.scalars), ...Object.keys(state.run.figures)])];
+};
+const latest = (entry) => {
+  for (let i = entry.y.length - 1; i >= 0; i--) if (entry.y[i] != null) return [entry.x[i], entry.y[i]];
+  return null;
+};
+
+function figureKey(probe, metric) { return `${probe}\u0000${metric}`; }
+
+async function loadFigure(probe, metric, [step, mtime]) {
+  const key = `${probe}/${metric}/${step}@${mtime}`;
+  if (!state.cache.has(key)) {
+    const q = new URLSearchParams({ probe, metric, step });
+    state.cache.set(key, fetch(`api/figure?${q}`).then((r) => (r.ok ? r.json() : { kind: 'message', text: 'figure not found' })));
+  }
+  return state.cache.get(key);
+}
+
+function select(view) {
+  state.view = view;
+  history.replaceState(null, '', view ? `#${encodeURIComponent(view)}` : location.pathname);
+  render();
+  document.getElementById('main').scrollTop = 0;
+}
+
+function renderSide() {
+  const side = document.getElementById('side');
+  side.innerHTML = '';
+  const names = probeNames();
+  const overview = el('button', null, `${icon('grid', 13)}<span class="name">Overview</span>`);
+  overview.setAttribute('aria-current', String(!state.view || !names.includes(state.view)));
+  overview.onclick = () => select(null);
+  side.append(overview, el('h4', null, 'Probes'));
+  names.forEach((name, i) => {
+    const n = Object.keys(state.run.scalars[name] || {}).length + Object.keys(state.run.figures[name] || {}).length;
+    const b = el('button', null, `<span class="swatch" style="background:${seriesColor(i)}"></span><span class="name">${esc(name)}</span><span class="count">${n}</span>`);
+    b.title = name;
+    b.setAttribute('aria-current', String(state.view === name));
+    b.onclick = () => select(name);
+    side.append(b);
+  });
+}
+
+function panel(title, note, value) {
+  const p = el('div', 'panel');
+  const head = el('header');
+  head.append(el('h3', null, esc(title)));
+  if (note) head.append(el('span', 'note', esc(note)));
+  if (value) head.append(el('span', 'value', value));
+  p.append(head);
+  return p;
+}
+
+function legend(items, onClick) {
+  const box = el('div', 'legend');
+  for (const it of items) {
+    const b = el('button', it.dim ? 'dim' : '', `${swatch(it.color, it.line)}<span>${esc(it.name)}</span>`);
+    if (onClick) b.onclick = () => onClick(it); else b.style.cursor = 'default';
+    box.append(b);
+  }
+  return box;
+}
+
+function renderOverview(main) {
+  const names = probeNames();
+  main.append(el('div', 'title', `<h1>Overview</h1><span class="muted">${names.length} probe${names.length === 1 ? '' : 's'}</span>`));
+  const metrics = [...new Set(names.flatMap((n) => Object.keys(state.run.scalars[n] || {})))];
+  if (metrics.length) {
+    const group = el('section', 'group', '<h2>Latest values</h2>');
+    const p = el('div', 'panel table-wrap');
+    const head = metrics.map((m) => `<th>${esc(m)}</th>`).join('');
+    const body = names.map((n, i) => {
+      const cells = metrics.map((m) => { const e = state.run.scalars[n]?.[m]; const l = e && latest(e); return `<td>${l ? fmt(l[1]) : ''}</td>`; }).join('');
+      return `<tr data-probe="${esc(n)}"><td><span class="swatch" style="display:inline-block;margin-right:6px;background:${seriesColor(i)}"></span>${esc(n)}</td>${cells}</tr>`;
+    }).join('');
+    p.innerHTML = `<table class="latest"><thead><tr><th>probe</th>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    p.querySelectorAll('tbody tr').forEach((tr) => (tr.onclick = () => select(tr.dataset.probe)));
+    group.append(p);
+    main.append(group);
+
+    const charts = el('section', 'group', '<h2>Metrics across probes</h2>');
+    const grid = el('div', 'grid');
+    for (const metric of metrics) {
+      const series = names
+        .map((n, i) => ({ n, i, e: state.run.scalars[n]?.[metric] }))
+        .filter(({ e }) => e && e.x.length)
+        .map(({ n, i, e }) => ({ name: n, x: e.x, y: e.y, color: seriesColor(i), dash: i >= 8 }));
+      const p = panel(metric, `${series.length} probe${series.length === 1 ? '' : 's'}`);
+      const plot = makePlot(p, 190);
+      plot.draw = lineChart({ series, xlabel: 'epoch', integerX: true });
+      if (series.length > 1) p.append(legend(series.map((s) => ({ name: s.name, color: s.color, line: true }))));
+      grid.append(p);
+      plot.render();
+    }
+    charts.append(grid);
+    main.append(charts);
+  }
+  const figureCount = names.reduce((a, n) => a + Object.keys(state.run.figures[n] || {}).length, 0);
+  if (figureCount) {
+    const group = el('section', 'group', '<h2>Figures</h2>');
+    const list = el('div', 'panel');
+    list.innerHTML = names
+      .filter((n) => state.run.figures[n])
+      .map((n) => `<div><b>${esc(n)}</b> <span class="muted">${Object.entries(state.run.figures[n]).map(([m, s]) => `${esc(m)} (${s.length})`).join(' · ')}</span></div>`)
+      .join('');
+    group.append(list);
+    main.append(group);
+  }
+}
+
+function renderProbe(main, name) {
+  const scalars = state.run.scalars[name] || {}, figures = state.run.figures[name] || {};
+  const idx = probeNames().indexOf(name);
+  main.append(el('div', 'title', `<span class="swatch" style="background:${seriesColor(idx)}"></span><h1>${esc(name)}</h1>`));
+
+  const metrics = Object.entries(scalars);
+  if (metrics.length) {
+    const group = el('section', 'group', '<h2>Metrics</h2>');
+    const grid = el('div', 'grid');
+    for (const [metric, entry] of metrics) {
+      const last = latest(entry);
+      const marks = Object.entries(entry.marks).map(([n, v]) => ({ name: n, value: v }));
+      const p = panel(metric, last ? `epoch ${last[0]}` : marks.length ? 'named runs' : '', last ? fmt(last[1]) : '');
+      const plot = makePlot(p, 170);
+      plot.draw = lineChart({ series: [{ name: metric, x: entry.x, y: entry.y, color: seriesColor(idx) }], marks, xlabel: 'epoch', integerX: true });
+      grid.append(p);
+      plot.render();
+    }
+    group.append(grid);
+    main.append(group);
+  }
+
+  const figs = Object.entries(figures);
+  if (figs.length) {
+    const group = el('section', 'group', '<h2>Figures</h2>');
+    const grid = el('div', 'grid wide');
+    for (const [metric, steps] of figs) grid.append(figureCard(name, metric, steps));
+    group.append(grid);
+    main.append(group);
+  }
+  if (!metrics.length && !figs.length) main.append(el('p', 'muted', 'Nothing recorded for this probe yet.'));
+}
+
+function figureCard(probe, metric, steps) {
+  const key = figureKey(probe, metric);
+  const st = (state.figures[key] ??= { i: steps.length - 1, follow: true, playing: null, focus: new Set() });
+  if (st.follow) st.i = steps.length - 1;
+  st.i = Math.min(st.i, steps.length - 1);
+
+  const p = panel(metric, '');
+  const note = p.querySelector('header').appendChild(el('span', 'note'));
+  const pill = p.querySelector('header').appendChild(el('span', 'pill'));
+  pill.style.marginLeft = 'auto';
+  const isScatter = ['pca', 'tsne'].includes(metric);
+  const plot = makePlot(p, isScatter ? 380 : 300);
+  const legendBox = el('div');
+  p.append(legendBox);
+
+  const controls = el('div', 'controls');
+  const prev = el('button', 'icon-btn', icon('left')); prev.title = 'Previous';
+  const next = el('button', 'icon-btn', icon('right')); next.title = 'Next';
+  const play = el('button', 'icon-btn', icon(st.playing ? 'pause' : 'play')); play.title = 'Play through the epochs';
+  const slider = el('input'); slider.type = 'range'; slider.min = 0; slider.max = steps.length - 1; slider.value = st.i;
+  const label = el('span', 'step');
+  controls.append(play, prev, slider, next, label);
+  p.append(controls);
+  if (steps.length < 2) { slider.disabled = prev.disabled = next.disabled = play.disabled = true; }
+
+  let token_ = 0;
+  async function show(i) {
+    st.i = i; st.follow = i === steps.length - 1;
+    slider.value = i;
+    pill.textContent = steps[i][0];
+    label.textContent = `${i + 1} / ${steps.length}`;
+    prev.disabled = i === 0; next.disabled = i === steps.length - 1;
+    const mine = ++token_;
+    const spec = await loadFigure(probe, metric, steps[i]);
+    if (mine !== token_ || !plot.wrap.isConnected) return;
+    note.textContent = spec.note || '';
+    const redraw = () => {
+      plot.draw = figureChart(spec, st.focus);
+      legendBox.innerHTML = '';
+      if (spec.kind === 'scatter' && spec.groups.length > 1) {
+        legendBox.append(legend(
+          spec.groups.map((g, k) => ({ name: g.name, color: seriesColor(k), dim: st.focus.size && !st.focus.has(g.name) })),
+          (it) => { st.focus.has(it.name) ? st.focus.delete(it.name) : st.focus.add(it.name); redraw(); },
+        ));
+      }
+      plot.render();
+    };
+    redraw();
+  }
+  const stop = () => { clearInterval(st.playing); st.playing = null; play.innerHTML = icon('play'); };
+  slider.oninput = () => { stop(); show(+slider.value); };
+  prev.onclick = () => { stop(); show(Math.max(0, st.i - 1)); };
+  next.onclick = () => { stop(); show(Math.min(steps.length - 1, st.i + 1)); };
+  play.onclick = () => {
+    if (st.playing) return stop();
+    if (st.i >= steps.length - 1) show(0);
+    play.innerHTML = icon('pause');
+    st.playing = setInterval(() => {
+      if (!play.isConnected || st.i >= steps.length - 1) return stop();
+      show(st.i + 1);
+    }, 700);
+  };
+  if (st.playing) { clearInterval(st.playing); st.playing = null; play.onclick(); }
+  show(st.i);
+  return p;
+}
+
+function render() {
+  const main = document.getElementById('main');
+  document.getElementById('path').textContent = state.run?.root || '';
+  if (!state.run) return;
+  renderSide();
+  const scroll = main.scrollTop;
+  resize.disconnect();
+  plots.clear();
+  main.innerHTML = '';
+  const names = probeNames();
+  if (!names.length) {
+    main.innerHTML = `<div class="empty"><div>Waiting for the first <b>probes.run(...)</b><br><code>${esc(state.run.root)}</code></div></div>`;
+  } else if (state.view && names.includes(state.view)) renderProbe(main, state.view);
+  else renderOverview(main);
+  main.scrollTop = scroll;
+  const epochs = names.flatMap((n) => Object.values(state.run.scalars[n] || {}).flatMap((e) => e.x));
+  document.getElementById('summary').textContent =
+    `${names.length} probe${names.length === 1 ? '' : 's'}${epochs.length ? ` · epoch ${Math.max(...epochs)}` : ''}`;
+}
+
+function ago(t) {
+  const s = Math.round((Date.now() - t) / 1000);
+  return s < 60 ? `${s}s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`;
+}
+function renderStatus() {
+  const dot = document.getElementById('dot'), text = document.getElementById('state');
+  if (state.connected === false) {
+    dot.className = 'dot down';
+    text.textContent = 'viewer stopped: the training script has ended (nnprobes view <folder> reopens it)';
+  } else if (state.connected) {
+    dot.className = 'dot live';
+    text.textContent = `live · last change ${ago(state.changed)} ago`;
+  }
+}
+
+async function poll() {
+  try {
+    const r = await fetch('api/run', { cache: 'no-store' });
+    const text = await r.text();
+    state.connected = true;
+    if (text !== state.text) {
+      state.text = text; state.run = JSON.parse(text); state.changed = Date.now();
+      render();
+    }
+  } catch {
+    state.connected = false;
+  }
+  renderStatus();
+  setTimeout(poll, 2000);
+}
+
+applyTheme(store.get('nnprobes.theme'));
+addEventListener('hashchange', () => { state.view = decodeURIComponent(location.hash.slice(1)) || null; render(); });
+setInterval(renderStatus, 1000);
+poll();
+</script>
+</body>
+</html>

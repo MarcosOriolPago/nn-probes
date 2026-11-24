@@ -1,4 +1,6 @@
 import csv
+import json
+import urllib.request
 
 import numpy as np
 import pytest
@@ -64,11 +66,8 @@ def test_added_layer_and_decorators(tmp_path, loader):
     rows = read_csv(tmp_path / "probes.csv")
     assert {r["probe"] for r in rows} == {"encoder", "z", "blocks.0.attention_weights", "blocks.1.attention_weights"}
     assert [r["step"] for r in rows if r["metric"] == "drift"] == ["1", "2"]
-    assert sorted(p.name for p in (tmp_path / "encoder" / "pca").iterdir()) == [
-        "epoch000.png",
-        "epoch002.png",
-        "test.png",
-    ]
+    assert sorted(p.stem for p in (tmp_path / "encoder" / "pca").glob("*.png")) == ["epoch000", "epoch002", "test"]
+    assert sorted(p.stem for p in (tmp_path / "encoder" / "pca").glob("*.json")) == ["epoch000", "epoch002", "test"]
     assert (tmp_path / "encoder" / "curves.png").exists()
     assert (tmp_path / "blocks.1.attention_weights" / "attention_heatmap" / "epoch002.png").exists()
     saved = np.load(tmp_path / "z" / "activations" / "test.npz")
@@ -141,3 +140,35 @@ def test_quant_saturation_reads_the_grid():
 def test_schedule():
     assert [s for s in range(7) if nnp.PCA().is_due(s)] == [0, 5]
     assert not nnp.EffectiveRank(every=0).is_due(4) and nnp.EffectiveRank(every=0).is_due("best")
+
+
+def test_figure_data_redraws(tmp_path, loader):
+    model = Model()
+    nnp.Probes(tmp_path).add(model.encoder, nnp.PCA(), nnp.Histogram(), nnp.SVDSpectrum()).run(model, loader, 0)
+    for metric, kind in [("pca", "scatter"), ("histogram", "bars"), ("svd_spectrum", "line")]:
+        spec = json.loads((tmp_path / "encoder" / metric / "epoch000.json").read_text())
+        assert spec["kind"] == kind
+        nnp.draw(spec, "redrawn")
+    heat = json.loads((tmp_path / "blocks.0.attention_weights" / "attention_heatmap" / "epoch000.json").read_text())
+    assert len(heat["rows"]) == 3 and len(heat["z"][0]) == 5
+
+
+def test_viewer_serves_the_run(tmp_path, loader):
+    model = Model()
+    probes = nnp.Probes(tmp_path, serve=True).add(model.encoder, nnp.EffectiveRank(), nnp.PCA(every=1))
+    for epoch in range(2):
+        probes.run(model, loader, epoch)
+    probes.run(model, loader, "test")
+    url = f"http://127.0.0.1:{probes.viewer.server_address[1]}"
+    try:
+        assert b"nn-probes" in urllib.request.urlopen(url).read()
+        run = json.loads(urllib.request.urlopen(f"{url}/api/run").read())
+        rank = run["scalars"]["encoder"]["effective_rank"]
+        assert rank["x"] == [0, 1] and "test" in rank["marks"]
+        assert [s for s, _ in run["figures"]["encoder"]["pca"]] == ["epoch000", "epoch001", "test"]
+        spec = json.loads(urllib.request.urlopen(f"{url}/api/figure?probe=encoder&metric=pca&step=test").read())
+        assert spec["kind"] == "scatter"
+        with pytest.raises(urllib.error.HTTPError):
+            urllib.request.urlopen(f"{url}/api/figure?probe=..&metric=encoder&step=pca")
+    finally:
+        probes.viewer.shutdown()

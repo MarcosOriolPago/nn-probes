@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import math
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import numpy as np
 from matplotlib.figure import Figure
 
 from nnprobes.metrics import ProbeData
+from nnprobes.plots import draw
 
 
 def step_label(step: int | str) -> str:
@@ -19,7 +21,8 @@ class RunFolder:
 
     probes.csv                        step, probe, metric, value
     <probe>/curves.png                every scalar over epochs, named runs as dashed lines
-    <probe>/<figure>/<step>.png       e.g. encoder/pca/epoch005.png
+    <probe>/<figure>/<step>.json      the figure's data, e.g. encoder/pca/epoch005.json
+    <probe>/<figure>/<step>.png       the same figure drawn with matplotlib
     <probe>/activations/<step>.npz    values and labels, from SaveActivations
     """
 
@@ -36,10 +39,13 @@ class RunFolder:
                 writer.writerow(["step", "probe", "metric", "value"])
             writer.writerows([step, probe, key, value] for key, value in values.items())
 
-    def save_figure(self, step: int | str, probe: str, name: str, fig: Figure) -> None:
-        path = self.path / probe / name / f"{step_label(step)}.png"
+    def save_figure(self, step: int | str, probe: str, name: str, spec: dict) -> None:
+        path = self.path / probe / name / step_label(step)
         path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(path, dpi=150)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(spec, separators=(",", ":")))
+        tmp.replace(path.with_suffix(".json"))
+        draw(spec, f"{probe} | {name} | {step_label(step)}").savefig(path.with_suffix(".png"), dpi=150)
 
     def save_activations(self, step: int | str, data: ProbeData) -> None:
         path = self.path / data.name / "activations" / f"{step_label(step)}.npz"

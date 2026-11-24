@@ -8,11 +8,17 @@ from nnprobes.metrics import Metric, ProbeData, effective_rank
 
 
 class FigureMetric(Metric):
-    """One plot per run, saved as <probe>/<name>/<step>.png. Build a matplotlib Figure, not pyplot."""
+    """A plot every few epochs. `compute` returns the plot's data as a dict, saved to
+    <probe>/<name>/<step>.json and drawn to a PNG next to it and in the viewer.
+
+    Kinds: {"kind": "scatter", "groups": [{"name", "x", "y"}]}, {"kind": "line", "x", "y"},
+    {"kind": "bars", "edges", "counts"}, {"kind": "heatmap", "z", "rows"}, {"kind": "message", "text"}.
+    Optional keys: "xlabel", "ylabel", "logy", "note".
+    """
 
     default_every = 5
 
-    def render(self, data: ProbeData, title: str) -> Figure:
+    def compute(self, data: ProbeData) -> dict:
         raise NotImplementedError
 
 
@@ -21,15 +27,15 @@ class PCA(FigureMetric):
 
     name = "pca"
 
-    def render(self, data, title):
+    def compute(self, data):
         rows = data.rows() - data.rows().mean(axis=0)
         if not rows.any():
-            return _message(title, "collapsed output: all rows identical")
+            return message("collapsed output: all rows identical")
         u, s, _ = np.linalg.svd(rows, full_matrices=False)
         points = np.zeros((len(rows), 2))
         points[:, : min(2, len(s))] = u[:, :2] * s[:2]
         var = np.append(s**2 / (s**2).sum(), 0.0)
-        return _scatter(points, data, title, f"PC1 ({var[0]:.1%})", f"PC2 ({var[1]:.1%})")
+        return scatter(points, data, f"PC1 ({var[0]:.1%})", f"PC2 ({var[1]:.1%})")
 
 
 class TSNE(FigureMetric):
@@ -41,15 +47,15 @@ class TSNE(FigureMetric):
         super().__init__(every)
         self.perplexity = perplexity
 
-    def render(self, data, title):
+    def compute(self, data):
         from sklearn.manifold import TSNE as SkTSNE
 
         unique, inverse = np.unique(data.rows(), axis=0, return_inverse=True)
         if len(unique) < 5:
-            return _message(title, f"collapsed output: {len(unique)} distinct row(s)")
+            return message(f"collapsed output: {len(unique)} distinct row(s)")
         perplexity = min(self.perplexity, (len(unique) - 1) / 3)
         points = SkTSNE(perplexity=perplexity, init="pca", random_state=0).fit_transform(unique)
-        return _scatter(points[inverse.ravel()], data, title)
+        return scatter(points[inverse.ravel()], data)
 
 
 class SVDSpectrum(FigureMetric):
@@ -57,18 +63,19 @@ class SVDSpectrum(FigureMetric):
 
     name = "svd_spectrum"
 
-    def render(self, data, title):
+    def compute(self, data):
         rows = data.rows()
         s = np.linalg.svd(rows - rows.mean(axis=0), compute_uv=False)
         s = s / s.max() if s.max() > 0 else s
-        fig = Figure(figsize=(7, 4), layout="constrained")
-        ax = fig.add_subplot()
-        ax.semilogy(np.arange(1, len(s) + 1), np.maximum(s, 1e-8), marker="o", ms=3)
-        ax.set_xlabel("component")
-        ax.set_ylabel("singular value / max")
-        ax.set_title(f"{title} | effective rank {effective_rank(rows):.2f} / {rows.shape[1]}")
-        ax.grid(alpha=0.3)
-        return fig
+        return {
+            "kind": "line",
+            "x": list(range(1, len(s) + 1)),
+            "y": _numbers(np.maximum(s, 1e-8)),
+            "logy": True,
+            "xlabel": "component",
+            "ylabel": "singular value / max",
+            "note": f"effective rank {effective_rank(rows):.2f} / {rows.shape[1]}",
+        }
 
 
 class Histogram(FigureMetric):
@@ -76,13 +83,9 @@ class Histogram(FigureMetric):
 
     name = "histogram"
 
-    def render(self, data, title):
-        fig = Figure(figsize=(7, 4), layout="constrained")
-        ax = fig.add_subplot()
-        ax.hist(data.values.ravel(), bins=100, log=True)
-        ax.set_title(title)
-        ax.grid(alpha=0.3)
-        return fig
+    def compute(self, data):
+        counts, edges = np.histogram(data.values.ravel(), bins=100)
+        return {"kind": "bars", "edges": _numbers(edges), "counts": counts.tolist(), "logy": True, "xlabel": "value"}
 
 
 class AttentionHeatmap(FigureMetric):
@@ -90,48 +93,82 @@ class AttentionHeatmap(FigureMetric):
 
     name = "attention_heatmap"
 
-    def render(self, data, title):
+    def compute(self, data):
         w = data.values.reshape(len(data.values), -1, data.values.shape[-1]).mean(axis=1)
         labels = data.labels if data.labels is not None else np.zeros(len(w), dtype=int)
         classes = np.unique(labels)
         heat = np.stack([w[labels == c].mean(axis=0) for c in classes])
         names = [data.class_name(c) for c in classes] if data.labels is not None else ["all"]
-
-        fig = Figure(figsize=(10, max(2.5, 0.25 * len(names) + 1.5)), layout="constrained")
-        ax = fig.add_subplot()
-        image = ax.imshow(heat, aspect="auto", cmap="viridis", interpolation="nearest")
-        ax.set_yticks(range(len(names)), names, fontsize=7)
-        ax.set_xlabel("step (oldest -> newest)")
-        ax.set_title(title)
-        fig.colorbar(image, ax=ax)
-        return fig
+        return {"kind": "heatmap", "z": _numbers(heat), "rows": names, "xlabel": "step (oldest → newest)"}
 
 
-def _message(title: str, text: str) -> Figure:
-    fig = Figure(figsize=(6, 3))
-    ax = fig.add_subplot()
-    ax.text(0.5, 0.5, text, ha="center", va="center")
-    ax.set_title(title)
-    ax.set_axis_off()
-    return fig
+def message(text: str) -> dict:
+    return {"kind": "message", "text": text}
 
 
-def _scatter(points, data: ProbeData, title, xlabel=None, ylabel=None) -> Figure:
-    fig = Figure(figsize=(9, 8), layout="constrained")
-    ax = fig.add_subplot()
+def scatter(points: np.ndarray, data: ProbeData, xlabel: str | None = None, ylabel: str | None = None) -> dict:
     if data.labels is None:
-        ax.scatter(points[:, 0], points[:, 1], s=6, alpha=0.7)
+        groups = [{"name": "all", "x": _numbers(points[:, 0]), "y": _numbers(points[:, 1])}]
     else:
+        groups = [
+            {"name": data.class_name(c), "x": _numbers(points[m, 0]), "y": _numbers(points[m, 1])}
+            for c in np.unique(data.labels)
+            for m in [data.labels == c]
+        ]
+    return {"kind": "scatter", "groups": groups, "xlabel": xlabel, "ylabel": ylabel}
+
+
+def draw(spec: dict, title: str = "") -> Figure:
+    """Draw a figure's saved data with matplotlib, e.g. draw(json.load(open("encoder/pca/epoch005.json")))."""
+    kind = spec["kind"]
+    if spec.get("note"):
+        title = f"{title} | {spec['note']}" if title else spec["note"]
+    if kind == "message":
+        fig = Figure(figsize=(6, 3))
+        ax = fig.add_subplot()
+        ax.text(0.5, 0.5, spec["text"], ha="center", va="center")
+        ax.set_axis_off()
+    elif kind == "scatter":
+        fig = Figure(figsize=(9, 8), layout="constrained")
+        ax = fig.add_subplot()
         cmap = colormaps["tab20"]
-        for i, c in enumerate(np.unique(data.labels)):
-            m = data.labels == c
-            ax.scatter(points[m, 0], points[m, 1], s=6, alpha=0.7, color=cmap(i % cmap.N), label=data.class_name(c))
-        ax.legend(markerscale=3, fontsize=7, loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
-    ax.set_title(title)
-    if xlabel is None:
-        ax.set_xticks([])
-        ax.set_yticks([])
+        for i, g in enumerate(spec["groups"]):
+            ax.scatter(g["x"], g["y"], s=6, alpha=0.7, color=cmap(i % cmap.N), label=g["name"])
+        if len(spec["groups"]) > 1:
+            ax.legend(markerscale=3, fontsize=7, loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
+        if not spec.get("xlabel"):
+            ax.set_xticks([])
+            ax.set_yticks([])
+    elif kind == "line":
+        fig = Figure(figsize=(7, 4), layout="constrained")
+        ax = fig.add_subplot()
+        ax.plot(spec["x"], spec["y"], marker="o", ms=3)
+        ax.grid(alpha=0.3)
+    elif kind == "bars":
+        fig = Figure(figsize=(7, 4), layout="constrained")
+        ax = fig.add_subplot()
+        ax.stairs(spec["counts"], spec["edges"], fill=True)
+        ax.grid(alpha=0.3)
+    elif kind == "heatmap":
+        rows = spec["rows"]
+        fig = Figure(figsize=(10, max(2.5, 0.25 * len(rows) + 1.5)), layout="constrained")
+        ax = fig.add_subplot()
+        image = ax.imshow(np.array(spec["z"], dtype=float), aspect="auto", cmap="viridis", interpolation="nearest")
+        ax.set_yticks(range(len(rows)), rows, fontsize=7)
+        fig.colorbar(image, ax=ax)
     else:
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+        raise ValueError(f"unknown figure kind {kind!r}")
+    if kind != "message":
+        if spec.get("logy"):
+            ax.set_yscale("log")
+        ax.set_xlabel(spec.get("xlabel") or "")
+        ax.set_ylabel(spec.get("ylabel") or "")
+    ax.set_title(title)
     return fig
+
+
+def _numbers(a) -> list:
+    a = np.asarray(a, dtype=float)
+    if a.ndim > 1:
+        return [_numbers(row) for row in a]
+    return [float(f"{v:.4g}") if np.isfinite(v) else None for v in a]

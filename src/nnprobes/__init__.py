@@ -11,8 +11,9 @@ from nnprobes.metrics import (
     SaveActivations,
     ScalarMetric,
 )
-from nnprobes.plots import PCA, TSNE, AttentionHeatmap, FigureMetric, Histogram, SVDSpectrum
+from nnprobes.plots import PCA, TSNE, AttentionHeatmap, FigureMetric, Histogram, SVDSpectrum, draw
 from nnprobes.probes import Probes, probe
+from nnprobes.viewer import serve
 
 __version__ = "0.1.0"
 
@@ -35,5 +36,7 @@ __all__ = [
     "SVDSpectrum",
     "SaveActivations",
     "ScalarMetric",
+    "draw",
     "probe",
+    "serve",
 ]

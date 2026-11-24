@@ -11,8 +11,9 @@ import torch
 from torch import nn
 
 from nnprobes.metrics import Metric, ProbeData, QuantInfo, SaveActivations, ScalarMetric
-from nnprobes.output import RunFolder, step_label
+from nnprobes.output import RunFolder
 from nnprobes.plots import FigureMetric
+from nnprobes.viewer import serve as serve_viewer
 
 
 def probe(*metrics: Metric, name: str | None = None):
@@ -60,10 +61,18 @@ class Probes:
         probes.run(model, val_loader, epoch)
 
     Methods decorated with @probe are found automatically. Probing costs nothing outside run().
+    serve=True also opens a live viewer of the run in the browser, for as long as the script runs.
     """
 
-    def __init__(self, out_dir: str | Path, class_names: Sequence[str] | None = None, max_samples: int = 2000):
+    def __init__(
+        self,
+        out_dir: str | Path,
+        class_names: Sequence[str] | None = None,
+        max_samples: int = 2000,
+        serve: bool = False,
+    ):
         self.folder = RunFolder(out_dir)
+        self.viewer = serve_viewer(out_dir) if serve else None
         self.class_names = class_names
         self.max_samples = max_samples
         self._layers: dict[nn.Module, tuple[str | None, list[Metric]]] = {}
@@ -112,8 +121,7 @@ class Probes:
                 if isinstance(metric, ScalarMetric):
                     scalars.update(metric.compute(data))
                 elif isinstance(metric, FigureMetric):
-                    fig = metric.render(data, f"{data.name} | {metric.name} | {step_label(step)}")
-                    self.folder.save_figure(step, data.name, metric.name, fig)
+                    self.folder.save_figure(step, data.name, metric.name, metric.compute(data))
                 elif isinstance(metric, SaveActivations):
                     self.folder.save_activations(step, data)
             except Exception as e:

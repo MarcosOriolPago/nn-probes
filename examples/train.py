@@ -14,7 +14,7 @@ class Classifier(nn.Module):
     def forward(self, x):
         return self.head(self.embedding(x))
 
-    @nnp.probe(nnp.EffectiveRank(), nnp.LinearProbe(), nnp.TSNE(every=5))
+    @nnp.probe(nnp.EffectiveRank(), nnp.LinearProbe(), nnp.PCA(every=1), nnp.TSNE(every=5))
     def embedding(self, x):
         return self.encoder(x)
 
@@ -34,8 +34,8 @@ def main():
     model = Classifier()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    probes = nnp.Probes("runs/example", class_names=["up", "down", "left", "right"])
-    probes.add(model.encoder[1], nnp.DeadNeurons(), nnp.Histogram(every=5), name="relu1")
+    probes = nnp.Probes("runs/example", class_names=["up", "down", "left", "right"], serve=True)
+    probes.add(model.encoder[1], nnp.DeadNeurons(), nnp.Drift(), nnp.Histogram(every=5), name="relu1")
 
     for epoch in range(15):
         for x, y in train_loader:
