@@ -3,7 +3,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "nn-probes"
+name = "layertrace"
 version = "0.1.0"
 description = "Online probing of neural network layers during training."
 readme = "README.md"
@@ -21,14 +21,14 @@ classifiers = [
 ]
 
 [project.scripts]
-nnprobes = "nnprobes.viewer:main"
+layertrace = "layertrace.viewer:main"
 
 [project.optional-dependencies]
 sklearn = ["scikit-learn>=1.3"]
-dev = ["nn-probes[sklearn]", "pytest>=7", "ruff>=0.4"]
+dev = ["layertrace[sklearn]", "pytest>=7", "ruff>=0.4"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nnprobes"]
+packages = ["src/layertrace"]
 
 [tool.ruff]
 line-length = 120

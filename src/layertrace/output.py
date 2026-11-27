@@ -8,8 +8,8 @@ from pathlib import Path
 import numpy as np
 from matplotlib.figure import Figure
 
-from nnprobes.metrics import ProbeData
-from nnprobes.plots import draw
+from layertrace.metrics import ProbeData
+from layertrace.plots import draw
 
 
 def step_label(step: int | str) -> str:

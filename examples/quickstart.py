@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset, random_split
 
-import nnprobes as nnp
+import layertrace as lt
 
 
 class Classifier(nn.Module):
@@ -14,7 +14,15 @@ class Classifier(nn.Module):
     def forward(self, x):
         return self.head(self.embedding(x))
 
-    @nnp.probe(nnp.EffectiveRank(), nnp.LinearProbe(), nnp.PCA(every=1), nnp.TSNE(every=5))
+    @lt.probe(
+        lt.EffectiveRank(),
+        lt.LinearProbe(),
+        lt.KNNProbe(),
+        lt.NeuralCollapse(),
+        lt.PCA(every=1),
+        lt.TSNE(every=5),
+        lt.LayerCKA(every=1),
+    )
     def embedding(self, x):
         return self.encoder(x)
 
@@ -34,8 +42,14 @@ def main():
     model = Classifier()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    probes = nnp.Probes("runs/example", class_names=["up", "down", "left", "right"], serve=True)
-    probes.add(model.encoder[1], nnp.DeadNeurons(), nnp.Drift(), nnp.Histogram(every=5), name="relu1")
+    probes = lt.Probes("runs/quickstart", class_names=["up", "down", "left", "right"], serve=True)
+    probes.add(
+        model.encoder[1], lt.DeadNeurons(), lt.Drift(), lt.Histogram(every=5), lt.LayerCKA(every=1), name="relu1"
+    )
+    probes.add(model.encoder[0], lt.LayerCKA(every=1), name="linear1")
+    probes.add(model.encoder, lt.WeightStats(), lt.Drift(reference="first"))
+
+    probes.run(model, val_loader, -1)  # before training: the reference for Drift(reference="first")
 
     for epoch in range(15):
         for x, y in train_loader:

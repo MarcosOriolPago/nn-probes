@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nn-probes viewer</title>
+<title>layertrace viewer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
@@ -142,7 +142,7 @@ footer.status {
 <header class="top">
   <div class="brand">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 12h4l6-6M11 12l6 6"/></svg>
-    nn-probes
+    layertrace
   </div>
   <span class="path mono" id="path"></span>
   <span class="spacer"></span>
@@ -193,10 +193,10 @@ document.getElementById('theme').onclick = () => {
     ? document.documentElement.dataset.theme === 'dark'
     : matchMedia('(prefers-color-scheme: dark)').matches;
   const next = dark ? 'light' : 'dark';
-  store.set('nnprobes.theme', next);
+  store.set('layertrace.theme', next);
   applyTheme(next);
 };
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(store.get('nnprobes.theme')));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(store.get('layertrace.theme')));
 
 function fmt(v) {
   if (v == null || !isFinite(v)) return '–';
@@ -370,6 +370,9 @@ function lineChart(spec) {
 function scatterChart(spec, focus) {
   return (ctx, w, h, m) => {
     const groups = spec.groups.map((g, i) => ({ ...g, color: seriesColor(i) }));
+    const cs = groups.flatMap((g) => g.c || []).filter((v) => v != null);
+    const cLo = Math.min(...cs), cSpan = Math.max(...cs) - cLo || 1;
+    const pointColor = (g, k) => (g.c && g.c[k] != null ? rampColor((g.c[k] - cLo) / cSpan) : g.color);
     const xs = groups.flatMap((g) => g.x).filter((v) => v != null), ys = groups.flatMap((g) => g.y).filter((v) => v != null);
     if (!xs.length) { drawMessage(ctx, w, h, 'no points'); return null; }
     const f = frame(ctx, w, h, {
@@ -386,19 +389,22 @@ function scatterChart(spec, focus) {
         const y = g.y[k];
         if (x == null || y == null) return;
         const px = f.sx(x), py = f.sy(y);
+        if (g.c) ctx.fillStyle = pointColor(g, k);
         ctx.beginPath(); ctx.arc(px, py, 2.4, 0, 2 * Math.PI); ctx.fill();
         if (m && !faded) {
           const d = (px - m.x) ** 2 + (py - m.y) ** 2;
-          if (d < bestD) { bestD = d; best = { g, px, py, x, y }; }
+          if (d < bestD) { bestD = d; best = { g, k, px, py, x, y }; }
         }
       });
     }
     ctx.globalAlpha = 1;
     if (!best) return null;
     ctx.beginPath(); ctx.arc(best.px, best.py, 5, 0, 2 * Math.PI);
-    ctx.fillStyle = best.g.color; ctx.fill(); ctx.strokeStyle = token('panel'); ctx.lineWidth = 2; ctx.stroke();
+    const color = pointColor(best.g, best.k);
+    ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = token('panel'); ctx.lineWidth = 2; ctx.stroke();
     const coords = spec.xlabel ? `<div class="muted mono">${fmt(best.x)}, ${fmt(best.y)}</div>` : '';
-    return `<div class="row">${swatch(best.g.color)}<b>${esc(best.g.name)}</b></div>${coords}`;
+    const value = best.g.c ? ` <span class="v">${fmt(best.g.c[best.k])}</span>` : '';
+    return `<div class="row">${swatch(color)}<b>${esc(best.g.name)}</b>${value}</div>${coords}`;
   };
 }
 
@@ -436,10 +442,11 @@ function heatmapChart(spec) {
     const z = spec.z, rows = spec.rows, cols = z[0]?.length || 0;
     const values = z.flat().filter((v) => v != null);
     if (!values.length) { drawMessage(ctx, w, h, 'no values'); return null; }
-    const lo = Math.min(...values), hi = Math.max(...values);
+    const lo = spec.vmin ?? Math.min(...values), hi = spec.vmax ?? Math.max(...values);
+    const colNames = spec.cols || null;
     ctx.font = `11px ${token('sans')}`;
     const labelW = Math.min(140, Math.max(...rows.map((r) => ctx.measureText(r).width)) + 10);
-    const box = { l: labelW, r: w - 66, t: 6, b: h - (spec.xlabel ? 36 : 22) };
+    const box = { l: labelW, r: w - 66, t: 6, b: h - (spec.xlabel ? 36 : 22) - (colNames ? 14 : 0) };
     const cw = (box.r - box.l) / cols, ch = (box.b - box.t) / rows.length;
     z.forEach((row, r) => row.forEach((v, c) => {
       ctx.fillStyle = v == null ? token('raised') : rampColor((v - lo) / (hi - lo || 1));
@@ -448,8 +455,18 @@ function heatmapChart(spec) {
     ctx.fillStyle = token('muted'); ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     if (ch >= 9) rows.forEach((name, r) => ctx.fillText(name, box.l - 6, box.t + (r + 0.5) * ch));
     ctx.font = `10px ${token('mono')}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    for (const t of linearTicks(0, cols - 1, Math.max(2, Math.floor((box.r - box.l) / 60)))) {
-      if (Number.isInteger(t)) ctx.fillText(t, box.l + (t + 0.5) * cw, box.b + 6);
+    if (colNames) {
+      ctx.font = `11px ${token('sans')}`;
+      const every = Math.max(1, Math.ceil(colNames.length / Math.max(1, Math.floor((box.r - box.l) / 70))));
+      colNames.forEach((name, c) => {
+        if (c % every) return;
+        const short = name.length > 14 ? `…${name.slice(-13)}` : name;
+        ctx.fillText(short, box.l + (c + 0.5) * cw, box.b + 6);
+      });
+    } else {
+      for (const t of linearTicks(0, cols - 1, Math.max(2, Math.floor((box.r - box.l) / 60)))) {
+        if (Number.isInteger(t)) ctx.fillText(t, box.l + (t + 0.5) * cw, box.b + 6);
+      }
     }
     if (spec.xlabel) { ctx.font = `11px ${token('sans')}`; ctx.textBaseline = 'bottom'; ctx.fillText(spec.xlabel, (box.l + box.r) / 2, h - 2); }
     const bx = w - 54, steps = 48;
@@ -464,7 +481,8 @@ function heatmapChart(spec) {
     const c = Math.floor((m.x - box.l) / cw), r = Math.floor((m.y - box.t) / ch);
     ctx.strokeStyle = token('text'); ctx.lineWidth = 1.5;
     ctx.strokeRect(box.l + c * cw, box.t + r * ch, cw, ch);
-    return `<b>${esc(rows[r])}</b><div class="row"><span>step ${c}</span><span class="v">${fmt(z[r][c])}</span></div>`;
+    const colName = colNames ? esc(colNames[c]) : `step ${c}`;
+    return `<b>${esc(rows[r])}</b><div class="row"><span>${colName}</span><span class="v">${fmt(z[r][c])}</span></div>`;
   };
 }
 
@@ -724,7 +742,7 @@ function renderStatus() {
   const dot = document.getElementById('dot'), text = document.getElementById('state');
   if (state.connected === false) {
     dot.className = 'dot down';
-    text.textContent = 'viewer stopped: the training script has ended (nnprobes view <folder> reopens it)';
+    text.textContent = 'viewer stopped: the training script has ended (layertrace view <folder> reopens it)';
   } else if (state.connected) {
     dot.className = 'dot live';
     text.textContent = `live · last change ${ago(state.changed)} ago`;
@@ -747,7 +765,7 @@ async function poll() {
   setTimeout(poll, 2000);
 }
 
-applyTheme(store.get('nnprobes.theme'));
+applyTheme(store.get('layertrace.theme'));
 addEventListener('hashchange', () => { state.view = decodeURIComponent(location.hash.slice(1)) || null; render(); });
 setInterval(renderStatus, 1000);
 poll();

@@ -1,19 +1,22 @@
-from nnprobes.metrics import (
+from layertrace.metrics import (
     ActivationStats,
     AttentionEntropy,
     DeadNeurons,
     Drift,
     EffectiveRank,
+    KNNProbe,
     LinearProbe,
     Metric,
+    NeuralCollapse,
     ProbeData,
     QuantSaturation,
     SaveActivations,
     ScalarMetric,
+    WeightStats,
 )
-from nnprobes.plots import PCA, TSNE, AttentionHeatmap, FigureMetric, Histogram, SVDSpectrum, draw
-from nnprobes.probes import Probes, probe
-from nnprobes.viewer import serve
+from layertrace.plots import PCA, TSNE, AttentionHeatmap, FigureMetric, Histogram, LayerCKA, SVDSpectrum, draw
+from layertrace.probes import Probes, probe
+from layertrace.viewer import serve
 
 __version__ = "0.1.0"
 
@@ -28,14 +31,18 @@ __all__ = [
     "EffectiveRank",
     "FigureMetric",
     "Histogram",
+    "KNNProbe",
+    "LayerCKA",
     "LinearProbe",
     "Metric",
+    "NeuralCollapse",
     "ProbeData",
     "Probes",
     "QuantSaturation",
     "SVDSpectrum",
     "SaveActivations",
     "ScalarMetric",
+    "WeightStats",
     "draw",
     "probe",
     "serve",

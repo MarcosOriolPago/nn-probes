@@ -14,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 def serve(path: str | Path, port: int = 8050) -> ThreadingHTTPServer:
     """Serve the live viewer for a run folder in a background thread and print its address.
 
-    It stops when the Python process ends; `nnprobes view <path>` keeps it open afterwards.
+    It stops when the Python process ends; `layertrace view <path>` keeps it open afterwards.
     """
     server = _start(path, port)
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -22,7 +22,7 @@ def serve(path: str | Path, port: int = 8050) -> ThreadingHTTPServer:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="nnprobes", description="Browse a run folder written by nnprobes.Probes.")
+    parser = argparse.ArgumentParser(prog="layertrace", description="Browse a run folder written by layertrace.Probes.")
     commands = parser.add_subparsers(dest="command", required=True)
     view = commands.add_parser("view", help="open the live viewer")
     view.add_argument("path", help="the run folder, e.g. runs/exp1")
@@ -45,7 +45,7 @@ def _start(path: str | Path, port: int) -> ThreadingHTTPServer:
     else:
         raise OSError(f"no free port in {port}-{port + 19}")
     server.root = Path(path).resolve()
-    print(f"nn-probes viewer: http://127.0.0.1:{server.server_address[1]}", flush=True)
+    print(f"layertrace viewer: http://127.0.0.1:{server.server_address[1]}", flush=True)
     return server
 
 
@@ -104,7 +104,7 @@ class _Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         root: Path = self.server.root
         if url.path == "/":
-            self._send(files("nnprobes").joinpath("viewer.html").read_bytes(), "text/html; charset=utf-8")
+            self._send(files("layertrace").joinpath("viewer.html").read_bytes(), "text/html; charset=utf-8")
         elif url.path == "/api/run":
             self._send(json.dumps(run_summary(root)).encode(), "application/json")
         elif url.path == "/api/figure":
