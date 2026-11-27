@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib import colormaps
 from matplotlib.figure import Figure
 
-from nnprobes.metrics import Metric, ProbeData, effective_rank
+from layertrace.metrics import Metric, ProbeData, effective_rank, linear_cka
 
 
 class FigureMetric(Metric):
@@ -13,7 +13,8 @@ class FigureMetric(Metric):
 
     Kinds: {"kind": "scatter", "groups": [{"name", "x", "y"}]}, {"kind": "line", "x", "y"},
     {"kind": "bars", "edges", "counts"}, {"kind": "heatmap", "z", "rows"}, {"kind": "message", "text"}.
-    Optional keys: "xlabel", "ylabel", "logy", "note".
+    Optional keys: "xlabel", "ylabel", "logy", "note"; a scatter group's "c" colors its points on a
+    ramp; a heatmap's "cols" names its columns and "vmin"/"vmax" fix its color range.
     """
 
     default_every = 5
@@ -88,6 +89,33 @@ class Histogram(FigureMetric):
         return {"kind": "bars", "edges": _numbers(edges), "counts": counts.tolist(), "logy": True, "xlabel": "value"}
 
 
+class LayerCKA(Metric):
+    """Linear CKA between every pair of probes carrying this metric, as one heatmap per run, saved
+    under the "layers" probe. Shows which layers represent the same thing, and how that settles
+    during training. Only probes that saw the same samples (same rows) are compared."""
+
+    name = "layer_cka"
+    default_every = 5
+
+
+def cka_matrix(names: list[str], rows: list[np.ndarray], sources: list[int]) -> dict:
+    n = len(names)
+    z = np.full((n, n), np.nan)
+    for i in range(n):
+        for j in range(i, n):
+            if sources[i] == sources[j] and len(rows[i]) == len(rows[j]):
+                z[i, j] = z[j, i] = linear_cka(rows[i], rows[j])
+    return {
+        "kind": "heatmap",
+        "z": _numbers(z),
+        "rows": names,
+        "cols": names,
+        "vmin": 0,
+        "vmax": 1,
+        "note": "linear CKA",
+    }
+
+
 class AttentionHeatmap(FigureMetric):
     """Mean attention weight per step (x) for each label (y)."""
 
@@ -95,10 +123,10 @@ class AttentionHeatmap(FigureMetric):
 
     def compute(self, data):
         w = data.values.reshape(len(data.values), -1, data.values.shape[-1]).mean(axis=1)
-        labels = data.labels if data.labels is not None else np.zeros(len(w), dtype=int)
+        labels = data.labels if data.classes else np.zeros(len(w), dtype=int)
         classes = np.unique(labels)
         heat = np.stack([w[labels == c].mean(axis=0) for c in classes])
-        names = [data.class_name(c) for c in classes] if data.labels is not None else ["all"]
+        names = [data.class_name(c) for c in classes] if data.classes else ["all"]
         return {"kind": "heatmap", "z": _numbers(heat), "rows": names, "xlabel": "step (oldest → newest)"}
 
 
@@ -109,6 +137,10 @@ def message(text: str) -> dict:
 def scatter(points: np.ndarray, data: ProbeData, xlabel: str | None = None, ylabel: str | None = None) -> dict:
     if data.labels is None:
         groups = [{"name": "all", "x": _numbers(points[:, 0]), "y": _numbers(points[:, 1])}]
+    elif data.continuous:
+        groups = [
+            {"name": "label", "x": _numbers(points[:, 0]), "y": _numbers(points[:, 1]), "c": _numbers(data.labels)}
+        ]
     else:
         groups = [
             {"name": data.class_name(c), "x": _numbers(points[m, 0]), "y": _numbers(points[m, 1])}
@@ -133,7 +165,11 @@ def draw(spec: dict, title: str = "") -> Figure:
         ax = fig.add_subplot()
         cmap = colormaps["tab20"]
         for i, g in enumerate(spec["groups"]):
-            ax.scatter(g["x"], g["y"], s=6, alpha=0.7, color=cmap(i % cmap.N), label=g["name"])
+            if "c" in g:
+                c = np.array(g["c"], dtype=float)
+                fig.colorbar(ax.scatter(g["x"], g["y"], s=6, alpha=0.8, c=c, cmap="viridis"), ax=ax, label=g["name"])
+            else:
+                ax.scatter(g["x"], g["y"], s=6, alpha=0.7, color=cmap(i % cmap.N), label=g["name"])
         if len(spec["groups"]) > 1:
             ax.legend(markerscale=3, fontsize=7, loc="center left", bbox_to_anchor=(1.0, 0.5), frameon=False)
         if not spec.get("xlabel"):
@@ -150,11 +186,16 @@ def draw(spec: dict, title: str = "") -> Figure:
         ax.stairs(spec["counts"], spec["edges"], fill=True)
         ax.grid(alpha=0.3)
     elif kind == "heatmap":
-        rows = spec["rows"]
+        rows, cols = spec["rows"], spec.get("cols")
         fig = Figure(figsize=(10, max(2.5, 0.25 * len(rows) + 1.5)), layout="constrained")
         ax = fig.add_subplot()
-        image = ax.imshow(np.array(spec["z"], dtype=float), aspect="auto", cmap="viridis", interpolation="nearest")
+        z = np.array(spec["z"], dtype=float)
+        image = ax.imshow(
+            z, aspect="auto", cmap="viridis", interpolation="nearest", vmin=spec.get("vmin"), vmax=spec.get("vmax")
+        )
         ax.set_yticks(range(len(rows)), rows, fontsize=7)
+        if cols:
+            ax.set_xticks(range(len(cols)), cols, fontsize=7, rotation=45, ha="right")
         fig.colorbar(image, ax=ax)
     else:
         raise ValueError(f"unknown figure kind {kind!r}")
